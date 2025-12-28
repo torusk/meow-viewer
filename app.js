@@ -37,7 +37,7 @@ ui.contract.value = CONFIG.DEFAULT_CONTRACT;
 function switchTab(tabId) {
     ui.tabs.forEach(t => t.classList.toggle('active', t.id === `tab-${tabId}`));
     ui.sections.forEach(s => s.classList.toggle('active', s.id === `section-${tabId}`));
-    
+
     ui.output.innerHTML = '';
     ui.status.textContent = tabId === 'id' ? '情報を入力して検索を開始してください' : 'ウォレットを接続してください';
 }
@@ -45,22 +45,46 @@ function switchTab(tabId) {
 /**
  * Handle damaged On-Chain JSON
  */
+/**
+ * 破損した JSON を可能な限り修復してパースする
+ */
 function robustJSONParse(rawStr) {
     try {
         return JSON.parse(rawStr);
     } catch (e) {
         console.warn("Raw JSON is malformed. Attempting surgical repair...");
         try {
-            // Fix unescaped quotes inside value strings
-            let repaired = rawStr.replace(/":\s*"(.*?)"\s*(,?)\s*/g, (match, val, comma) => {
+            // 1. 改行コードをエスケープに変換
+            let repaired = rawStr.replace(/\n/g, "\\n").replace(/\r/g, "\\r");
+
+            // 2. キー（name, description, image等）を基準に、その中身（値）を抽出して
+            // 値の中に含まれる生の引用符 (") をエスケープ (\") に置換します。
+            // キーの直後の引用符と、カンマや閉じ括弧の直前の引用符を「境界」として認識します。
+            repaired = repaired.replace(/"(name|description|image)":\s*"([\s\S]*?)"(?=\s*(,\s*"(name|description|image|attributes)"|\s*\}))/g, (match, key, val) => {
+                // 値の中にある「エスケープされていない引用符」をエスケープ
                 const safeVal = val.replace(/(?<!\\)"/g, '\\"');
-                return `": "${safeVal}"${comma}`;
+                return `"${key}": "${safeVal}"`;
             });
+
+            console.log("Repaired JSON:", repaired);
             return JSON.parse(repaired);
         } catch (e2) {
-            console.error("Critical: Metatada parsing failed completely.", e2);
-            throw new Error("メタデータの解析に失敗しました。コントラクトのデータを確認してください。");
+            console.error("Advanced repair failed.", e2);
+            throw new Error("メタデータの解析に失敗しました。説明文の引用符などが原因の可能性があります。");
         }
+    }
+}
+
+/**
+ * Base64データを安全にUTF-8文字列としてデコードする
+ */
+function decodeBase64(base64) {
+    try {
+        const binString = atob(base64);
+        const bytes = Uint8Array.from(binString, (m) => m.codePointAt(0));
+        return new TextDecoder().decode(bytes);
+    } catch (e) {
+        return atob(base64); // フォールバック
     }
 }
 
@@ -95,7 +119,7 @@ async function handleSearch() {
         const contract = new ethers.Contract(addr, abi, provider);
 
         await renderNFT(contract, id);
-        ui.status.textContent = "表示完了。";
+        ui.status.textContent = "";
     } catch (err) {
         ui.status.textContent = "エラー: " + (err.reason || err.message);
     } finally {
@@ -143,7 +167,7 @@ async function handleWalletConnection() {
             }
         }
 
-        ui.status.textContent = count > 0 ? `${count}個のNFTがあなたのウォレットで見つかりました。` : "このコントラクトからのNFTは所有していないようです。";
+        ui.status.textContent = count > 0 ? "" : "このコントラクトからのNFTは所有していないようです。";
     } catch (err) {
         ui.status.textContent = "接続エラー: " + err.message;
     } finally {
@@ -161,7 +185,7 @@ async function renderNFT(contract, id) {
     // 1. Fetch JSON (On-Chain or IPFS)
     if (uri.startsWith('data:')) {
         const base64Content = uri.split(',')[1];
-        metadata = robustJSONParse(atob(base64Content));
+        metadata = robustJSONParse(decodeBase64(base64Content));
     } else {
         const response = await fetch(resolveIPFS(uri));
         metadata = robustJSONParse(await response.text());
@@ -170,7 +194,7 @@ async function renderNFT(contract, id) {
     // 2. Build Card
     const card = document.createElement('div');
     card.className = 'nft-card';
-    
+
     const cid = (metadata.image || "").replace('ipfs://', '');
     const firstGateway = resolveIPFS(metadata.image, 0);
 
@@ -193,7 +217,7 @@ async function renderNFT(contract, id) {
     img.onerror = () => {
         gatewayAttempt++;
         if (gatewayAttempt < CONFIG.IPFS_GATEWAYS.length) {
-            console.info(`[Fallback] Image failed on gateway ${gatewayAttempt-1}. Trying ${gatewayAttempt}...`);
+            console.info(`[Fallback] Image failed on gateway ${gatewayAttempt - 1}. Trying ${gatewayAttempt}...`);
             img.src = CONFIG.IPFS_GATEWAYS[gatewayAttempt] + cid;
         } else {
             console.error("All IPFS gateways failed to resolve image.");
