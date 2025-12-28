@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meow NFT Explorer 🐱 | Premium Viewer</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-wrapper">
+        <header>
+            <h1>My Meow</h1>
+            <p class="tagline">記念NFTを最高のクオリティで表示</p>
+        </header>
+
+        <div class="tab-container">
+            <button id="tab-id" class="tab-btn active" onclick="switchTab('id')">IDで検索</button>
+            <button id="tab-wallet" class="tab-btn" onclick="switchTab('wallet')">ウォレットをスキャン</button>
+        </div>
+
+        <!-- ID Search Section -->
+        <main id="section-id" class="view-section active">
+            <div class="control-group">
+                <label>Contract Address</label>
+                <div class="input-wrapper">
+                    <input type="text" id="contract-input" placeholder="0x..." autocomplete="off">
+                </div>
+            </div>
+            <div class="control-group">
+                <label>Token ID</label>
+                <div class="input-wrapper">
+                    <input type="number" id="id-input" placeholder="0" autocomplete="off">
+                </div>
+            </div>
+            <button id="btn-search" class="primary-button">NFTデータを読み込む</button>
+        </main>
+
+        <!-- Wallet Scan Section -->
+        <main id="section-wallet" class="view-section">
+            <div style="text-align: center; margin-bottom: 20px;">
+                <p style="color: var(--text-secondary);">MetaMaskを接続すると、所有しているすべてのMeow NFTを自動的にスキャンします。</p>
+            </div>
+            <button id="btn-connect" class="primary-button">MetaMaskに接続</button>
+        </main>
+
+        <!-- Dynamic Content -->
+        <div id="loader" class="loader"></div>
+        <div id="status-area">情報を入力して検索を開始してください</div>
+
+        <div id="nft-output-area">
+            <!-- Rendered NFTs go here -->
+        </div>
+    </div>
+
+    <!-- ethers.js (v6) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.2/ethers.umd.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
