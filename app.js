@@ -4,9 +4,24 @@
  */
 
 // --- Configuration ---
+const NETWORKS = {
+    polygon: {
+        name: "Polygon",
+        chainId: "0x89",
+        rpc: "https://polygon-rpc.com",
+        defaultContract: "0x27188ac3AFE630d3468F532a9dD787bC412CC024" // TODO: Change if Polygon contract is different
+    },
+    sepolia: {
+        name: "Sepolia",
+        chainId: "0xaa36a7",
+        rpc: "https://ethereum-sepolia-rpc.publicnode.com",
+        defaultContract: "0x27188ac3AFE630d3468F532a9dD787bC412CC024"
+    }
+};
+
+let currentNet = "polygon";
+
 const CONFIG = {
-    DEFAULT_CONTRACT: "0x27188ac3AFE630d3468F532a9dD787bC412CC024",
-    RPC_URL: "https://ethereum-sepolia-rpc.publicnode.com",
     IPFS_GATEWAYS: [
         "https://gateway.pinata.cloud/ipfs/",
         "https://cloudflare-ipfs.com/ipfs/",
@@ -29,7 +44,11 @@ const ui = {
 };
 
 // --- Initialization ---
-ui.contract.value = CONFIG.DEFAULT_CONTRACT;
+function init() {
+    // Default to 'id' tab which uses Sepolia
+    currentNet = "sepolia";
+    ui.contract.value = NETWORKS[currentNet].defaultContract;
+}
 
 /**
  * Switch TABS (UI Logic)
@@ -39,7 +58,17 @@ function switchTab(tabId) {
     ui.sections.forEach(s => s.classList.toggle('active', s.id === `section-${tabId}`));
 
     ui.output.innerHTML = '';
-    ui.status.textContent = tabId === 'id' ? '情報を入力して検索を開始してください' : 'ウォレットを接続してください';
+
+    // Auto-switch network context based on tab
+    if (tabId === 'id') {
+        currentNet = 'sepolia';
+        ui.status.textContent = 'Sepolia ネットワークで検索します';
+    } else {
+        currentNet = 'polygon';
+        ui.status.textContent = 'Polygon ネットワークに接続します';
+    }
+
+    ui.contract.value = NETWORKS[currentNet].defaultContract;
 }
 
 /**
@@ -110,11 +139,11 @@ async function handleSearch() {
     }
 
     try {
+        ui.status.textContent = "ブロックチェーンから取得中...";
         toggleLoading(true);
         ui.output.innerHTML = '';
-        ui.status.textContent = "ブロックチェーンから取得中...";
 
-        const provider = new ethers.JsonRpcProvider(CONFIG.RPC_URL);
+        const provider = new ethers.JsonRpcProvider(NETWORKS[currentNet].rpc);
         const abi = ["function tokenURI(uint256) view returns (string)"];
         const contract = new ethers.Contract(addr, abi, provider);
 
@@ -142,6 +171,29 @@ async function handleWalletConnection() {
         ui.status.textContent = "ウォレットに接続中...";
 
         const browserProvider = new ethers.BrowserProvider(window.ethereum);
+
+        // --- Network Check & Switch ---
+        const network = await browserProvider.getNetwork();
+        const expectedChainId = NETWORKS[currentNet].chainId;
+
+        if ("0x" + network.chainId.toString(16) !== expectedChainId) {
+            try {
+                await window.ethereum.request({
+                    method: 'wallet_switchEthereumChain',
+                    params: [{ chainId: expectedChainId }],
+                });
+            } catch (switchError) {
+                // This error code indicates that the chain has not been added to MetaMask.
+                if (switchError.code === 4902) {
+                    ui.status.textContent = `${NETWORKS[currentNet].name} ネットワークをMetaMaskに追加してください。`;
+                } else {
+                    ui.status.textContent = `ネットワークの切り替えに失敗しました: ${switchError.message}`;
+                }
+                toggleLoading(false);
+                return;
+            }
+        }
+
         const accounts = await browserProvider.send("eth_requestAccounts", []);
         const userAddress = accounts[0];
         const contractAddress = ui.contract.value.trim();
@@ -241,6 +293,7 @@ ui.btnConnect.addEventListener('click', handleWalletConnection);
 
 // Support for deep links (e.g., index.html?id=1&contract=0x...)
 window.addEventListener('load', () => {
+    init();
     const params = new URLSearchParams(window.location.search);
     if (params.get('id')) {
         ui.tokenId.value = params.get('id');
